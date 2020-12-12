@@ -12,12 +12,12 @@ if sys.version_info < (3, 6):
     sys.exit(-1)
 
 # stores __version__ in the current namespace
-exec(compile(open("pymathics/hello/version.py").read(), "version.py", "exec"))
+exec(compile(open("pymathics/matplotlib/version.py").read(), "version.py", "exec"))
 
 is_PyPy = platform.python_implementation() == "PyPy"
 
 setup(
-    name="pymathics-hello",
+    name="pymathics-matplotlib",
     version=__version__,
     packages=find_namespace_packages(include=["pymathics.*"]),
     install_requires=["mathics3>=1.1.0"],

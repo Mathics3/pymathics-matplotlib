@@ -1,5 +1,6 @@
 *~
 /.python-version
 /pymathics_hello.egg-info
+/pymathics_matplotlib.egg-info
 /pymathics_test.egg-info
 __pycache__
