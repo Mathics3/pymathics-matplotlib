@@ -1,9 +1,4 @@
-Test PyMathics module
-
-This is a Python module for Mathics that is an simple "Hello, World" example
-that is typically used as a minimal example for demonstration.
-
-Here we are demonstrating how to write a PyMathics module.
+PyMathics module to use matplotlib as a rendering endgine for Graphics.
 
 To install in development mode (run code from the source tree):
 
@@ -20,11 +15,4 @@ Then to the function ``Pymathics\`Hello[]`` and the variable ``PyMathics\`$Hello
 ::
 
       $ mathicsscript
-      In[1]:= LoadModule["pymathics.hello"]
-      Out[1]= pymathics.hello
-
-      In[2]:= PyMathics`Hello["World"]
-      Out[2]:= Hello, World!
-
-      In[3]:= PyMathics`$HelloUser
-      Out[3]:= $your-login-name$
+      In[1]:= MPlot[ToMatplotlib[Line[{{0.25,0.5},{0.25,0.25},{0.5,0.25},{0.5,0.5}}]]]

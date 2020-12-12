@@ -20,7 +20,7 @@ setup(
     name="pymathics-matplotlib",
     version=__version__,
     packages=find_namespace_packages(include=["pymathics.*"]),
-    install_requires=["mathics3>=1.1.0"],
+    install_requires=["mathics3>=1.1.0", "matplotlib"],
     # don't pack Mathics in egg because of media files, etc.
     zip_safe=False,
     # metadata for upload to PyPI

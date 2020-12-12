@@ -17,9 +17,8 @@ class ToMatplotlib(Builtin):
         self.fig, self.ax = plt.subplots()
 
     def apply(self, expr, evaluation):
-        "ToMatplotlib[expr_]"
+        "%(name)s[expr_]"
         return self.to_matplotlib(expr)
-        # Interpret expr.
 
     def to_matplotlib(self, graphics_expr, *args, **kwargs):
         """
@@ -37,8 +36,21 @@ class ToMatplotlib(Builtin):
         ydata = [p[1] for p in points]
         graphics_expr.line = lines.Line2D(xdata, ydata)
         self.ax.add_line(graphics_expr.line)
-        plt.show()
 
     def apply_boxes(self, expr, evaluation) -> Expression:
         'ToMatplotlib[expr_, PythonForm]'
         return self.apply(expr, evaluation)
+
+
+class MPlot(Builtin):
+    """
+    <dl>
+      <dt>'MPLot'[$expr$]
+      <dd>Convert $expr$ in matplotlib.
+    </dl>
+    >> PyMathics`ToMatplotlib[Line[{{0.25,0.5},{0.25,0.25},{0.5,0.25},{0.5,0.5}}]]
+    """
+    def apply(self, expr, evaluation):
+        "%(name)s[expr_]"
+        plt.show()
+        return expr
