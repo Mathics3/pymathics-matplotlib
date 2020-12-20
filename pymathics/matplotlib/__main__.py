@@ -5,6 +5,7 @@ from mathics.core.expression import Expression
 from mathics.core.rules import Rule
 import matplotlib.pyplot as plt
 
+
 class ToMatplotlib(Builtin):
     """
     <dl>
@@ -16,11 +17,13 @@ class ToMatplotlib(Builtin):
 
     def __init__(self, *args, **kwargs):
         super(Builtin, self).__init__()
-        self.fig, self.ax = plt.subplots()
 
     def apply(self, expr, evaluation):
-        "%(name)s[expr_]"
-        return self.to_matplotlib(expr, evaluation)
+        "%(name)s[expr__]"
+        self.fig, self.ax = plt.subplots()
+        for e in expr.get_sequence():
+            result = self.to_matplotlib(expr, evaluation)
+        return result
 
     def to_matplotlib(self, graphics_expr, evaluation):
         """
@@ -34,6 +37,30 @@ class ToMatplotlib(Builtin):
             option_fn = self.option_name_to_fn.get(option_name.get_name(), None)
             if option_fn:
                 option_fn(self, option_value, evaluation)
+        elif head_name == "System`Rectangle":
+            print(graphics_expr.leaves)
+            if len(graphics_expr.leaves) == 1:
+                xmin, ymin = graphics_expr.leaves[0].to_python()
+                if (xmin, ymin) == (0, 0):
+                    points = ((0, 0), (0, 1), (1, 1), (1, 0), (0, 0))
+                else:
+                    if not hasattr(xmin, "len"):
+                        xdata = (xmin, 1)
+                    if not hasattr(ymin, "len"):
+                        ydata = (ymin, 1)
+                    points = [(xdata[0], ydata[0]), (xdata[0], ydata[1]),
+                              (xdata[1], ydata[1]), (xdata[1], ydata[0]), (xdata[0], ydata[0])]
+            else:
+                min_p, max_p = [l.to_python() for l in graphics_expr.leaves]
+                points = [min_p , (min_p[0], max_p[1]),
+                          (max_p[0], max_p[1]), (max_p[0], min_p[1]), min_p]
+
+            print(points)
+            plt.fill
+            xdata = [p[0] for p in points]
+            ydata = [p[1] for p in points]
+            plt.fill(xdata, ydata)
+
         return graphics_expr
 
     def add_line(self, graphics_expr):
