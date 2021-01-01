@@ -10,7 +10,7 @@ To install in development mode (run code from the source tree):
 After installing inside Mathics you can load this using the
 ``LoadModule[]`` function.
 
-Then to the function ``Pymathics\`Hello[]`` and the variable ``PyMathics\`$HelloUser`` will be available.
+Then to the function ``ToMatplotlib[]`` and ``MPlot[]`` will be available.
 
 ::
 
