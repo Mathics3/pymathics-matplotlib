@@ -7,43 +7,62 @@ import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 from matplotlib.collections import PatchCollection
 
-class ToMatplotlib(Builtin):
-    """
-    <dl>
-      <dt>'ToMatplotlib'[$expr$]
-      <dd>Convert $expr$ to matplotlib.
-    </dl>
-    >> PyMathics`ToMatplotlib[Line[{{0.25,0.5},{0.25,0.25},{0.5,0.25},{0.5,0.5}}]]
-    """
 
-    def __init__(self, *args, **kwargs):
-        super(Builtin, self).__init__()
-
-    def apply(self, expr, evaluation):
-        "%(name)s[expr__]"
+class WL2MLP:
+    def __init__(self, expr, evaluation):
         fig, ax = plt.subplots()
-        evaluation.current_mpl_context = {"fig": fig,
-                                          "ax": ax,
-                                          "patches": [],
-                                          "options": "",
-                                          "brush": {
-                                              "color": "black",
-                                              "thickness": "auto",
-                                              "style": "-"
-                                          },
+        self.context = {"fig": fig,
+                        "ax": ax,
+                        "patches": [],
+                        "options": "",
+                        "brush": {
+                            "color": "black",
+                            "thickness": "auto",
+                            "style": "-"
+                        },
+                        "style":{
+                            "ticks_style": None,
+                            "axes_style": None,
+                            "axes": True
+                        }
         }
         for e in expr.get_sequence():
             print("e=", e.get_head_name())
-            result = self.to_matplotlib(e, evaluation)
-        return result
+            self.to_matplotlib(e, evaluation)
+
+    def _complete_render(self):
+        "call me before show or export"
+        patches = self.context["patches"]
+        collection = PatchCollection(patches)
+        ax = self.context["ax"]
+        ax.add_collection(collection)
+        self.context["patches"] = []
+        # Apply the style options
+        style = self.context["style"]
+        for key in style:
+            option_fn = self.option_name_to_fn.get(key, None)
+            if option_fn:
+                option_fn(self, style[key], evaluation)
+
+    def show(self):
+        self._complete_render()
+        self.context["fig"].show()
+
+    def export(self, filename, format=None):
+        self._complete_render()
+        if format:
+            self.context["fig"].savefig(filename, format=format)
+        else:
+            self.context["fig"].savefig(filename)
 
     def to_matplotlib(self, graphics_expr: Expression, evaluation) -> None:
         """
         read and plot `graphics_expr` updating the state of `plt`.
         """
-        ax = evaluation.current_mpl_context["ax"]
-        patches = evaluation.current_mpl_context["patches"]
-        brush = evaluation.current_mpl_context["brush"]
+        ax = self.context["ax"]
+        patches = self.context["patches"]
+        brush = self.context["brush"]
+        print("to_mpl",graphics_expr)
         head_name = graphics_expr._head.get_name()
         if head_name in ("System`Graphics",
                          "System`GraphicsBox",
@@ -62,9 +81,7 @@ class ToMatplotlib(Builtin):
             self.matplotlib = self.add_text(graphics_expr, evaluation)
         elif head_name == "System`Rule":
             option_name, option_value = graphics_expr.leaves
-            option_fn = self.option_name_to_fn.get(option_name.get_name(), None)
-            if option_fn:
-                option_fn(self, option_value, evaluation)
+            self.context["style"][option_name] = option_value.to_python()
         elif head_name == "System`Rectangle":
             if len(graphics_expr.leaves) == 1:
                 xmin, ymin = graphics_expr.leaves[0].to_python()
@@ -92,36 +109,33 @@ class ToMatplotlib(Builtin):
 
             # FIXME: we probably need to reoganize this to arrange to do it once at the end
         elif head_name == "System`Circle":
-            leaves = graphics_expr.get_leaves()
-            if len(leaves) >1:
-                r = float(leaves[1].to_python())
-            else:
-                r = 1.
-            if len(leaves) >0:
-                center = leaves[0].to_python()
-            circle = mpatches.Circle(xy = center, radius = r, color=brush['color'],fill=False)
-            patches.append(circle)
+            self.add_circle(graphics_expr, False, evaluation)
         elif head_name == "System`Disk":
-            leaves = graphics_expr.get_leaves()
-            if len(leaves) >1:
-                r = float(leaves[1].to_python())
-            else:
-                r = 1.
-            if len(leaves) >0:
-                center = leaves[0].to_python()
-            circle = mpatches.Circle(xy = center, radius = r, color=brush['color'], fill=True)
-            patches.append(circle)
-
+            self.add_circle(graphics_expr, True, evaluation)
         elif head_name == "System`Polygon":
             points = graphics_expr.leaves[0].to_python()
             # Close file by adding a line from the last point to the first one
             points.append(points[0])
-            matplotlib_polygon(points, evaluation)
+            self.matplotlib_polygon(points, evaluation)
         return
 
+    def add_circle(self, graphics_expr, fill, evaluation):
+        brush = self.context["brush"]
+        leaves = graphics_expr.get_leaves()
+        if len(leaves) >1:
+            r = float(leaves[1].to_python())
+        else:
+            r = 1.
+        if len(leaves) >0:
+            center = leaves[0].to_python()
+        else:
+            center=(0,0)
+        circle = mpatches.Circle(xy = center, radius = r, color=brush['color'],fill=fill)
+        self.context["patches"].append(circle)
+        
     def add_text(self, graphics_expr, evaluation):
-        ax = evaluation.current_mpl_context["ax"]
-        brush = evaluation.current_mpl_context["brush"]
+        ax = self.context["ax"]
+        brush = self.context["brush"]
         leaves = graphics_expr.get_leaves()
         text = leaves[0]
         if type(text) is String:
@@ -139,47 +153,107 @@ class ToMatplotlib(Builtin):
         
 
     def add_line(self, graphics_expr, evaluation):
-        ax = evaluation.current_mpl_context["ax"]
-        # Convert leaves to points...
+        ax = self.context["ax"]
+        wllines = graphics_expr.leaves[0]
+        if wllines.leaves[0].leaves[0].has_form('List', None):
+            mpllines = wllines.to_python()
+        else:
+            mpllines = [wllines.to_python()]
+        for points in mpllines:
+            print("addline ge=",points)
+            xdata = [p[0] for p in points]
+            ydata = [p[1] for p in points]
+            line = lines.Line2D(xdata, ydata, color=self.context["brush"]["color"])
+            print("xdata=",xdata)
+            print("ydata=",ydata)
+            ax.add_line(line)
 
-        # Remove Expr[Line ... ]]
-        points = graphics_expr.leaves[0].to_python()
-
+    def matplotlib_polygon(self, points, evaluation):
+        ax = self.context["ax"]
         xdata = [p[0] for p in points]
         ydata = [p[1] for p in points]
-        graphics_expr.line = lines.Line2D(xdata, ydata)
-        ax.add_line(graphics_expr.line)
+        ax.fill(xdata, ydata)
 
-    def axes_aspect_ratio(self, aspect_ratio_value, evaluation):
-        ax = evaluation.current_mpl_context["ax"]
+    def axes_aspect_ratio(aspect_ratio_value, evaluation):
+        ax = self.context["ax"]
         aspect_ratio = (
             Expression("N", aspect_ratio_value).evaluate(evaluation).to_python()
         )
         ax.set_box_aspect(aspect_ratio)
 
+    def axes_show(value, evaluation):
+        if not value:
+            return
+        value = value.to_python()
+        ax = self.context["ax"]
+        if type(axes) is bool:
+            axes = (axes, axes)
+        axes = tuple(axes)
+        ax.xaxes.set_visible(axes[0])
+        ax.xaxes.set_visible(axes[1])
+
+    option_name_to_fn = {
+        "System`AspectRatio": axes_aspect_ratio,
+        "System`Axes": axes_show,
+    }
+
+
+
+class ToMatplotlib(Builtin):
+    """
+    <dl>
+      <dt>'ToMatplotlib'[$expr$]
+      <dd>Convert $expr$ to matplotlib.
+    </dl>
+    >> PyMathics`ToMatplotlib[Line[{{0.25,0.5},{0.25,0.25},{0.5,0.25},{0.5,0.5}}]]
+    """
+
+    def __init__(self, *args, **kwargs):
+        super(Builtin, self).__init__()
+
+    def apply(self, expr, evaluation):
+        "%(name)s[expr__]"
+        evaluation.current_wl2mpl = WL2MLP(expr, evaluation) 
+        return result
+
     def apply_boxes(self, expr, evaluation) -> Expression:
         "ToMatplotlib[expr_, PythonForm]"
         return self.apply(expr, evaluation)
 
-    option_name_to_fn = {
-        "System`AspectRatio": axes_aspect_ratio,
+
+class MLPExportGraphics(Builtin):
+    """
+    <dl>
+      <dt>'System`ConvertersDump`MLPExportGraphics'[$filename$, $graphics$]
+      <dd>Export  $graphics$ to a file $filename$
+      <dt>'System`ConvertersDump`MLPExportGraphics'[$filename$, $graphics$, $format$]
+      <dd>Force to use $format$.
+    </dl>
+    """
+    context = "System`ConvertersDump"
+    messages = {
+        "errexp": "`1` could not be saved in `2`",
     }
+    
+    def apply(self, filename, expr, format,  evaluation, options):
+        "%(name)s[filename_String, expr_, format__String,  OptionsPattern[]]"
+        wl2mpl = WL2MLP(expr, evaluation)
+        context = wl2mpl.context
+        try:
+            wlmpl.export(filename.get_string_value())
+        except:
+            evaluation.message("System`ConvertersDump","error",expr, filename)
+            raise
 
-
-def matplotlib_polygon(points, evaluation):
-    ax = evaluation.current_mpl_context["ax"]
-    xdata = [p[0] for p in points]
-    ydata = [p[1] for p in points]
-    ax.fill(xdata, ydata)
-
-
-class MPlot(Builtin):
+    
+class MPLShow(Builtin):
     """
     <dl>
       <dt>'MPLot'[$expr$]
       <dd>Convert $expr$ in matplotlib.
     </dl>
-    >> PyMathics`ToMatplotlib[Line[{{0.25,0.5},{0.25,0.25},{0.5,0.25},{0.5,0.5}}]]
+    >> PyMathics`MPLShow[Line[{{0.25,0.5},{0.25,0.25},{0.5,0.25},{0.5,0.5}}]]
+     :
     """
 
     # This is copied Graphics in graphics.py
@@ -199,20 +273,13 @@ class MPlot(Builtin):
 
     def apply(self, expr, evaluation, options):
         "%(name)s[expr_, OptionsPattern[%(name)s]]"
-        fig = evaluation.current_mpl_context["fig"]
-        ax  = evaluation.current_mpl_context["ax"]
-        patches = evaluation.current_mpl_context["patches"]
-        collection = PatchCollection(patches)
-        ax.add_collection(collection)
-        
-        ticks_style = options.get('System`TicksStyle').to_python()
-        axes_style = options.get('System`AxesStyle').to_python()
-        print("axes_style=",axes_style, "  ticks=",ticks_style)
-        # axes_style should overwrite what is defined in the argument. 
-        #if not axes_style:
-        #    ax.axis("off")
-        fig.show()
-        evaluation.current_mpl_context = None
+        # Process the options
+        wl2mpl = WL2MLP(expr, evaluation)
+        context = wl2mpl.context
+        context["style"]["ticks_style"] = options.get('System`TicksStyle').to_python()
+        context["style"]["axes_style"] = options.get('System`AxesStyle').to_python()
+        context["style"]["axes"] = options.get('System`Axes').to_python()
+        wl2mpl.show()
         return expr
 
 
