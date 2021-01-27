@@ -1,12 +1,13 @@
 # -*- coding: utf-8 -*-
 import matplotlib.lines as lines
 from mathics.builtin.base import Builtin, String
-from mathics.core.expression import Expression
+from mathics.core.expression import Expression, Symbol, from_python, strip_context
 from mathics.core.rules import Rule
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 from matplotlib.collections import PatchCollection
 from mathics.builtin.colors import hsb_to_rgb
+from mathics.builtin.graphics import _Color, GRAPHICS_OPTIONS
 
 class WL2MLP:
     def __init__(self, expr, evaluation):
@@ -14,7 +15,7 @@ class WL2MLP:
         self.context = {"fig": fig,
                         "ax": ax,
                         "patches": [],
-                        "options": "",
+                        "options": {},
                         "brush": {
                             "color": "black",
                             "thickness": "auto",
@@ -23,14 +24,18 @@ class WL2MLP:
                         "style":{
                             "ticks_style": None,
                             "axes_style": None,
-                            "axes": True
+                            "axes": True,
+                            "plotrange": None
                         }
         }
+        options = self.context["options"]
+        for opt in GRAPHICS_OPTIONS:
+            options["System`"+opt] = None
+
         for e in expr.get_sequence():
-            print("e=", e.get_head_name())
             self.to_matplotlib(e, evaluation)
 
-    def _complete_render(self):
+    def _complete_render(self, evaluation):
         "call me before show or export"
         patches = self.context["patches"]
         collection = PatchCollection(patches)
@@ -38,82 +43,60 @@ class WL2MLP:
         ax.add_collection(collection)
         self.context["patches"] = []
         # Apply the style options
-        style = self.context["style"]
-        for key in style:
+        options = self.context["options"]
+        for key in options:
             option_fn = self.option_name_to_fn.get(key, None)
             if option_fn:
-                option_fn(self, style[key], evaluation)
+                option_fn(self, options[key], evaluation)
+        return
 
-    def show(self):
-        self._complete_render()
+    def show(self, evaluation):
+        self._complete_render(evaluation)
         self.context["fig"].show()
 
-    def export(self, filename, format=None):
-        self._complete_render()
+    def export(self, filename, evaluation, format=None):
+        self._complete_render(evaluation)
         if format:
             self.context["fig"].savefig(filename, format=format)
         else:
             self.context["fig"].savefig(filename)
 
-    def to_matplotlib(self, graphics_expr: Expression, evaluation) -> None:
+    def to_matplotlib(self, graphics_expr: Expression, evaluation, drawsymbols=True) -> None:
         """
         read and plot `graphics_expr` updating the state of `plt`.
         """
         ax = self.context["ax"]
         patches = self.context["patches"]
         brush = self.context["brush"]
-        print("to_mpl",graphics_expr)
+        if graphics_expr.is_symbol():
+            if drawsymbols:
+                self.to_matplotlib(Expression("Text",
+                                              graphics_expr),
+                                   evaluation)
+            return
         head_name = graphics_expr._head.get_name()
+        # Iterables
         if head_name in ("System`Graphics",
                          "System`GraphicsBox",
                          "System`List"):
             for leaf in graphics_expr.get_leaves():
-                print("   leaf=", leaf.get_head_name())
                 self.to_matplotlib(leaf, evaluation)
-        elif head_name == "System`RGBColor":
-            rgbcolor = graphics_expr.leaves
-            rgbcolor = [ c.to_python() for c in rgbcolor]
-            print("rgbcolor=",rgbcolor)
-            brush["color"] = rgbcolor
-        elif head_name == "System`Hue":
-            huecolor = [0,1.,1.,1.]
-            for i, leaf in enumerate(graphics_expr.leaves):
-                huecolor[i] = float(leaf.to_python())
-            rgbcolor = hsb_to_rgb(*huecolor)
-            brush["color"] = set(rgbcolor[:3])
+        # Options
+        elif head_name == "System`Rule":
+            option_name, option_value = graphics_expr.leaves
+            self.context["options"][option_name.get_name()] = option_value
+        # Styles
+        elif head_name in ("System`RGBColor", "System`Hue"):
+            graphics_expr = _Color.create(graphics_expr)
+            color = graphics_expr.to_rgba()
+            brush["color"] = color
+        # Shapes and lines
         elif head_name == "System`Line":
             self.matplotlib = self.add_line(graphics_expr, evaluation)
         elif head_name == "System`Text":
             self.matplotlib = self.add_text(graphics_expr, evaluation)
-        elif head_name == "System`Rule":
-            option_name, option_value = graphics_expr.leaves
-            self.context["style"][option_name] = option_value.to_python()
         elif head_name == "System`Rectangle":
-            if len(graphics_expr.leaves) == 1:
-                xmin, ymin = graphics_expr.leaves[0].to_python()
-                xy = [0.0, 0.0]
-                width = 1.0
-                height = 1.0
-                if (xmin, ymin) != (0, 0):
-                    assert not hasattr(xmin, "len")
-                    width = (1.0 - xmin)
-                    xy[0] = 0
-                    assert not hasattr(ymin, "len")
-                    height = (1.0 - ymin)
-                    # In the specification (0,0) is the upper left and
-                    # xy is lower right. In plotting xy should be the
-                    # *upper* right and lower right y value should be 0
-                    xy[1] = 0
-            else:
-                xy, max_p = [l.to_python() for l in graphics_expr.leaves]
-                width = xy[0] + max_p[0]
-                height = xy[0] + max_p[1]
-
-            # add a rectangle
-            rectangle = mpatches.Rectangle(xy, width=width, height=height)
-            patches.append(rectangle)
-
-            # FIXME: we probably need to reoganize this to arrange to do it once at the end
+            self.add_rectangle(graphics_expr, evaluation)
         elif head_name == "System`Circle":
             self.add_circle(graphics_expr, False, evaluation)
         elif head_name == "System`Disk":
@@ -123,7 +106,40 @@ class WL2MLP:
             # Close file by adding a line from the last point to the first one
             points.append(points[0])
             self.matplotlib_polygon(points, evaluation)
+        # Default
+        else:
+            if drawsymbols:
+                self.to_matplotlib(Expression("Text",
+                                              graphics_expr),
+                                   evaluation)            
         return
+
+## Draw shapes and lines
+
+    def add_rectangle(self, graphics_expr, evaluation):
+        if len(graphics_expr.leaves) == 1:
+            xmin, ymin = graphics_expr.leaves[0].to_python()
+            xy = [0.0, 0.0]
+            width = 1.0
+            height = 1.0
+            if (xmin, ymin) != (0, 0):
+                assert not hasattr(xmin, "len")
+                width = (1.0 - xmin)
+                xy[0] = 0
+                assert not hasattr(ymin, "len")
+                height = (1.0 - ymin)
+                # In the specification (0,0) is the upper left and
+                # xy is lower right. In plotting xy should be the
+                # *upper* right and lower right y value should be 0
+                xy[1] = 0
+        else:
+            xy, max_p = [l.to_python() for l in graphics_expr.leaves]
+            width = xy[0] + max_p[0]
+            height = xy[0] + max_p[1]
+
+        # add a rectangle
+        rectangle = mpatches.Rectangle(xy, width=width, height=height)
+        self.context["ax"].add_artist(rectangle)
 
     def add_circle(self, graphics_expr, fill, evaluation):
         brush = self.context["brush"]
@@ -137,7 +153,8 @@ class WL2MLP:
         else:
             center=(0,0)
         circle = mpatches.Circle(xy = center, radius = r, color=brush['color'],fill=fill)
-        self.context["patches"].append(circle)
+        self.context["ax"].add_artist(circle)
+        #self.context["patches"].append(circle)
         
     def add_text(self, graphics_expr, evaluation):
         ax = self.context["ax"]
@@ -149,8 +166,6 @@ class WL2MLP:
         else:
             text = text.format(evaluation, "TeXForm")
             text = "$" + text.boxes_to_text() + "$"
-
-        print(text)
         if len(leaves)<2:
             x, y = (0,0)
         else:
@@ -166,12 +181,9 @@ class WL2MLP:
         else:
             mpllines = [wllines.to_python()]
         for points in mpllines:
-            print("addline ge=",points)
             xdata = [p[0] for p in points]
             ydata = [p[1] for p in points]
             line = lines.Line2D(xdata, ydata, color=self.context["brush"]["color"])
-            print("xdata=",xdata)
-            print("ydata=",ydata)
             ax.add_line(line)
 
     def matplotlib_polygon(self, points, evaluation):
@@ -180,27 +192,69 @@ class WL2MLP:
         ydata = [p[1] for p in points]
         ax.fill(xdata, ydata)
 
-    def axes_aspect_ratio(aspect_ratio_value, evaluation):
+######  Option handling
+
+    def axes_aspect_ratio(self, aspect_ratio_value, evaluation):
+        if not aspect_ratio_value or \
+           aspect_ratio_value == Symbol("System`Automatic"):
+            return
         ax = self.context["ax"]
         aspect_ratio = (
             Expression("N", aspect_ratio_value).evaluate(evaluation).to_python()
         )
         ax.set_box_aspect(aspect_ratio)
 
-    def axes_show(value, evaluation):
-        if not value:
-            return
-        value = value.to_python()
+
+    def axes_show(self, axes, evaluation):
         ax = self.context["ax"]
+        if not axes:
+            axes = False
+        else:
+            axes = axes.to_python()
+            
         if type(axes) is bool:
             axes = (axes, axes)
         axes = tuple(axes)
-        ax.xaxes.set_visible(axes[0])
-        ax.xaxes.set_visible(axes[1])
+        ax.xaxis.set_visible(axes[0])
+        ax.yaxis.set_visible(axes[1])
 
+    def set_image_size(self, value, evaluation):
+        ax = self.context["ax"]
+        if not value:
+            return
+        if value.has_form("List", 2):
+            value = value.to_python()
+            self.context["fig"].set_size_inches(*value)
+
+    def set_plot_range(self, value, evaluation):
+        ax = self.context["ax"]
+        if not value or value in (Symbol("System`Automatic"),
+                                  Symbol("System`All"),
+                                  Symbol("System`Full")):
+            return
+        if not value.has_form("List", None):
+            evaluation.message("", "Invalid plot range")
+            return
+        if len(value.leaves) == 1:
+            value = value.to_python()
+            value = [value, value]
+        elif len(value.leaves) == 2:
+            value = value.to_python()
+        else:
+            evaluation.message("", "Invalid plot range")
+            return
+
+        if type(value[0]) is list:
+            ax.set_xlim(value[0][0],value[0][1])
+        if type(value[1]) is list:
+            ax.set_ylim(value[1][0],value[1][1])
+
+        
     option_name_to_fn = {
         "System`AspectRatio": axes_aspect_ratio,
         "System`Axes": axes_show,
+        "System`PlotRange": set_plot_range,
+        "System`ImageSize": set_image_size,
     }
 
 
@@ -240,13 +294,14 @@ class MLPExportGraphics(Builtin):
     messages = {
         "errexp": "`1` could not be saved in `2`",
     }
+    options = GRAPHICS_OPTIONS
     
     def apply(self, filename, expr, format,  evaluation, options):
         "%(name)s[filename_String, expr_, format__String,  OptionsPattern[]]"
         wl2mpl = WL2MLP(expr, evaluation)
         context = wl2mpl.context
         try:
-            wlmpl.export(filename.get_string_value())
+            wlmpl.export(filename.get_string_value(), evaluation)
         except:
             evaluation.message("System`ConvertersDump","error",expr, filename)
             raise
@@ -264,28 +319,20 @@ class MPLShow(Builtin):
 
     # This is copied Graphics in graphics.py
     # DRY the two
-    options = {
-        "Axes": "False",
-        "TicksStyle": "{}",
-        "AxesStyle": "{}",
-        "LabelStyle": "{}",
-        "AspectRatio": "Automatic",
-        "PlotRange": "Automatic",
-        "PlotRangePadding": "Automatic",
-        "ImageSize": "Automatic",
-        "Background": "Automatic",
-        "$OptionSyntax": "Ignore",
-    }
-
+    options = GRAPHICS_OPTIONS
+    
     def apply(self, expr, evaluation, options):
         "%(name)s[expr_, OptionsPattern[%(name)s]]"
         # Process the options
         wl2mpl = WL2MLP(expr, evaluation)
         context = wl2mpl.context
+        for opt in options:
+            context["options"][opt] = options[opt]
+
         context["style"]["ticks_style"] = options.get('System`TicksStyle').to_python()
         context["style"]["axes_style"] = options.get('System`AxesStyle').to_python()
         context["style"]["axes"] = options.get('System`Axes').to_python()
-        wl2mpl.show()
+        wl2mpl.show(evaluation)
         return expr
 
 
