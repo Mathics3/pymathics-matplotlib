@@ -5,9 +5,9 @@ PyMathics MatPlotLib module.
 
 import os
 from pymathics.matplotlib.version import __version__
-from pymathics.matplotlib.__main__ import MPLExportGraphics, MPLShow # noqa
+from pymathics.matplotlib.__main__ import MPLExportGraphics, MPLShow, MPLExportGraphicsToString # noqa
 
-__all__ = ("__version__", "MPLExportGraphics", "MPLShow", "pymathics_version_data")
+__all__ = ("__version__", "MPLExportGraphicsToString", "MPLExportGraphics", "MPLShow", "pymathics_version_data")
 
 # To be recognized as an external mathics module, the following variable
 # is required:

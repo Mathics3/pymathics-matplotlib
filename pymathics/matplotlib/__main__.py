@@ -305,10 +305,17 @@ class MPLExportGraphics(Builtin):
         wl2mpl = WL2MLP(expr, evaluation, drawsymbols=True)
         context = wl2mpl.context
         try:
+            if type(format) is String:
+                format = format.get_string_value()
+            elif len(format.leaves)>0:
+                format=format.leaves[0].get_string_value()
+            else:
+                format = None
+            
             if format:
                 wl2mpl.export(filename.get_string_value(),
                               evaluation,
-                              format=format.get_string_value())
+                              format=format)
             else:
                 wl2mpl.export(filename.get_string_value(),
                               evaluation
@@ -317,7 +324,51 @@ class MPLExportGraphics(Builtin):
             evaluation.message("System`ConvertersDump","error",expr, filename)
             raise
         return filename
-    
+
+
+class MPLExportGraphicsToString(Builtin):
+    """
+    <dl>
+      <dt>'System`ConvertersDump`MPLExportGraphicsToString'[$graphics$]
+      <dd>Export  $graphics$ to a file $filename$
+      <dt>'System`ConvertersDump`MPLExportGraphics'[$filename$, $graphics$, $format$]
+      <dd>Force to use $format$.
+    </dl>
+    """
+    messages = {
+        "errexp": "`1` could not be saved in `2`",
+    }
+    options = GRAPHICS_OPTIONS
+
+    def apply(self, expr, format,  evaluation, options):
+        "MPLExportGraphicsToString[expr_, format___String,  OptionsPattern[MPLExportGraphicsToString]]"
+        from io import StringIO, BytesIO
+        out =  BytesIO()
+        wl2mpl = WL2MLP(expr, evaluation, drawsymbols=True)
+        context = wl2mpl.context
+        try:
+            if type(format) is String:
+                format = format.get_string_value()
+            elif len(format.leaves)>0:
+                format=format.leaves[0].get_string_value()
+            else:
+                format = None
+            if format:
+                print("format=", format)
+                wl2mpl.export(out,
+                              evaluation,
+                              format=format)
+            else:
+                print("should be svg")
+                wl2mpl.export(out,
+                              evaluation, format="SVG"
+                              )
+        except:
+            evaluation.message("System`ConvertersDump","error",expr)
+            raise
+        return String(out.getvalue().decode('utf8'))
+
+
 class MPLShow(Builtin):
     """
     <dl>
