@@ -1,13 +1,15 @@
 # -*- coding: utf-8 -*-
 import matplotlib.lines as lines
 from mathics.builtin.base import Builtin, String
-from mathics.core.expression import Expression, Symbol, from_python, strip_context
+from mathics.core.expression import Expression, Symbol, from_python
 from mathics.core.rules import Rule
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 from matplotlib.collections import PatchCollection
 from mathics.builtin.colors import hsb_to_rgb
 from mathics.builtin.graphics import _Color, GRAPHICS_OPTIONS
+
+z=0
 
 class WL2MLP:
     def __init__(self, expr, evaluation):
@@ -52,7 +54,8 @@ class WL2MLP:
 
     def show(self, evaluation):
         self._complete_render(evaluation)
-        self.context["fig"].show()
+        #self.context["fig"].show()
+        plt.show()
 
     def export(self, filename, evaluation, format=None):
         self._complete_render(evaluation)
@@ -320,7 +323,16 @@ class MPLShow(Builtin):
     # This is copied Graphics in graphics.py
     # DRY the two
     options = GRAPHICS_OPTIONS
-    
+    rules = {
+        
+    }
+    def apply_box(self, content, evaluation):
+        """System`MakeBoxes[System`content_System`Graphics, System`StandardForm]"""
+#        """System`MakeBoxes[System`content_System`Graphics, System`StandardForm|System`TraditionalForm|System`OutputForm]"""
+        self.apply(content, evaluation, [])
+        return String("--Graphics--")
+
+
     def apply(self, expr, evaluation, options):
         "%(name)s[expr_, OptionsPattern[%(name)s]]"
         # Process the options
@@ -329,13 +341,10 @@ class MPLShow(Builtin):
         for opt in options:
             context["options"][opt] = options[opt]
 
-        context["style"]["ticks_style"] = options.get('System`TicksStyle').to_python()
-        context["style"]["axes_style"] = options.get('System`AxesStyle').to_python()
-        context["style"]["axes"] = options.get('System`Axes').to_python()
         wl2mpl.show(evaluation)
         return expr
 
-
+    
 if __name__ == "__main__":
     from mathics.session import MathicsSession
 
