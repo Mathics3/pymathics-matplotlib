@@ -12,7 +12,7 @@ from mathics.builtin.graphics import _Color, GRAPHICS_OPTIONS
 z=0
 
 class WL2MLP:
-    def __init__(self, expr, evaluation):
+    def __init__(self, expr, evaluation, drawsymbols=True):
         fig, ax = plt.subplots()
         self.context = {"fig": fig,
                         "ax": ax,
@@ -35,7 +35,7 @@ class WL2MLP:
             options["System`"+opt] = None
 
         for e in expr.get_sequence():
-            self.to_matplotlib(e, evaluation)
+            self.to_matplotlib(e, evaluation, drawsymbols=drawsymbols)
 
     def _complete_render(self, evaluation):
         "call me before show or export"
@@ -60,7 +60,8 @@ class WL2MLP:
     def export(self, filename, evaluation, format=None):
         self._complete_render(evaluation)
         if format:
-            self.context["fig"].savefig(filename, format=format)
+            res= self.context["fig"].savefig(fname=filename, format=format)
+            print(res)
         else:
             self.context["fig"].savefig(filename)
 
@@ -71,7 +72,7 @@ class WL2MLP:
         ax = self.context["ax"]
         patches = self.context["patches"]
         brush = self.context["brush"]
-        if graphics_expr.is_symbol():
+        if graphics_expr.is_symbol() or type(graphics_expr) is String:
             if drawsymbols:
                 self.to_matplotlib(Expression("Text",
                                               graphics_expr),
@@ -284,31 +285,38 @@ class ToMatplotlib(Builtin):
         return self.apply(expr, evaluation)
 
 
-class MLPExportGraphics(Builtin):
+class MPLExportGraphics(Builtin):
     """
     <dl>
-      <dt>'System`ConvertersDump`MLPExportGraphics'[$filename$, $graphics$]
+      <dt>'System`ConvertersDump`MPLExportGraphics'[$filename$, $graphics$]
       <dd>Export  $graphics$ to a file $filename$
-      <dt>'System`ConvertersDump`MLPExportGraphics'[$filename$, $graphics$, $format$]
+      <dt>'System`ConvertersDump`MPLExportGraphics'[$filename$, $graphics$, $format$]
       <dd>Force to use $format$.
     </dl>
     """
-    context = "System`ConvertersDump"
+
     messages = {
         "errexp": "`1` could not be saved in `2`",
     }
     options = GRAPHICS_OPTIONS
     
     def apply(self, filename, expr, format,  evaluation, options):
-        "%(name)s[filename_String, expr_, format__String,  OptionsPattern[]]"
-        wl2mpl = WL2MLP(expr, evaluation)
+        "MPLExportGraphics[filename_String, expr_, format___String,  OptionsPattern[MPLExportGraphics]]"
+        wl2mpl = WL2MLP(expr, evaluation, drawsymbols=True)
         context = wl2mpl.context
         try:
-            wlmpl.export(filename.get_string_value(), evaluation)
+            if format:
+                wl2mpl.export(filename.get_string_value(),
+                              evaluation,
+                              format=format.get_string_value())
+            else:
+                wl2mpl.export(filename.get_string_value(),
+                              evaluation
+                              )
         except:
             evaluation.message("System`ConvertersDump","error",expr, filename)
             raise
-
+        return filename
     
 class MPLShow(Builtin):
     """
