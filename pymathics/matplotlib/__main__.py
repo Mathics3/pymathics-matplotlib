@@ -6,7 +6,7 @@ from mathics.core.rules import Rule
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 from matplotlib.collections import PatchCollection
-
+from mathics.builtin.colors import hsb_to_rgb
 
 class WL2MLP:
     def __init__(self, expr, evaluation):
@@ -75,6 +75,12 @@ class WL2MLP:
             rgbcolor = [ c.to_python() for c in rgbcolor]
             print("rgbcolor=",rgbcolor)
             brush["color"] = rgbcolor
+        elif head_name == "System`Hue":
+            huecolor = [0,1.,1.,1.]
+            for i, leaf in enumerate(graphics_expr.leaves):
+                huecolor[i] = float(leaf.to_python())
+            rgbcolor = hsb_to_rgb(*huecolor)
+            brush["color"] = set(rgbcolor[:3])
         elif head_name == "System`Line":
             self.matplotlib = self.add_line(graphics_expr, evaluation)
         elif head_name == "System`Text":
