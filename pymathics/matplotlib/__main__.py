@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 import matplotlib.lines as lines
-from mathics.builtin.base import Builtin, String
+from mathics.builtin.base import Builtin, String, BoxConstruct
 from mathics.core.expression import Expression, Symbol, from_python
 from mathics.core.rules import Rule
 import matplotlib.pyplot as plt
@@ -9,9 +9,43 @@ from matplotlib.collections import PatchCollection
 from mathics.builtin.colors import hsb_to_rgb
 from mathics.builtin.graphics import _Color, GRAPHICS_OPTIONS
 
-z=0
 
-class WL2MLP:
+
+class MPLGraphicsBox(BoxConstruct):
+    options = GRAPHICS_OPTIONS
+    attributes = ("HoldAll", "ReadProtected")
+
+
+    def apply_box(self, elems, evaluation, options):
+        """System`MakeBoxes[System`Graphics[elems_, System`OptionsPattern[System`Graphics]],
+        System`StandardForm|System`TraditionalForm|System`OutputForm]"""
+        instance = MPLGraphicsBox(elems)
+        instance.wl2mpl = _WL2MLP(elems, evaluation)
+        return instance
+
+    def boxes_to_text(self, leaves=None, **options):
+        self.wl2mpl.show(options["evaluation"])
+        return "--graphics-- text"
+
+    def boxes_to_tex(self, leaves=None, **options):
+        from io import StringIO
+        out =  StringIO()
+        self.wl2mpl.export(out, options["evaluation"],format="pgf") 
+        return out.getvalue()
+
+    def boxes_to_xml(self, leaves=None, **options):
+        if not leaves:
+            leaves = self._leaves
+        return self.boxes_to_svg(options["evaluation"])
+
+    def boxes_to_svg(self, evaluation):
+        from io import StringIO
+        out =  StringIO()
+        self.wl2mpl.export(out, evaluation,format="svg") 
+        return out.getvalue()
+
+
+class _WL2MLP:
     def __init__(self, expr, evaluation, drawsymbols=True):
         fig, ax = plt.subplots()
         self.context = {"fig": fig,
@@ -37,6 +71,7 @@ class WL2MLP:
         for e in expr.get_sequence():
             self.to_matplotlib(e, evaluation, drawsymbols=drawsymbols)
 
+
     def _complete_render(self, evaluation):
         "call me before show or export"
         patches = self.context["patches"]
@@ -52,6 +87,7 @@ class WL2MLP:
                 option_fn(self, options[key], evaluation)
         return
 
+
     def show(self, evaluation):
         self._complete_render(evaluation)
         #self.context["fig"].show()
@@ -64,6 +100,7 @@ class WL2MLP:
             print(res)
         else:
             self.context["fig"].savefig(filename)
+
 
     def to_matplotlib(self, graphics_expr: Expression, evaluation, drawsymbols=True) -> None:
         """
@@ -263,26 +300,6 @@ class WL2MLP:
 
 
 
-class ToMatplotlib(Builtin):
-    """
-    <dl>
-      <dt>'ToMatplotlib'[$expr$]
-      <dd>Convert $expr$ to matplotlib.
-    </dl>
-    >> PyMathics`ToMatplotlib[Line[{{0.25,0.5},{0.25,0.25},{0.5,0.25},{0.5,0.5}}]]
-    """
-
-    def __init__(self, *args, **kwargs):
-        super(Builtin, self).__init__()
-
-    def apply(self, expr, evaluation):
-        "%(name)s[expr__]"
-        evaluation.current_wl2mpl = WL2MLP(expr, evaluation) 
-        return result
-
-    def apply_boxes(self, expr, evaluation) -> Expression:
-        "ToMatplotlib[expr_, PythonForm]"
-        return self.apply(expr, evaluation)
 
 
 class MPLExportGraphics(Builtin):
@@ -302,7 +319,7 @@ class MPLExportGraphics(Builtin):
     
     def apply(self, filename, expr, format,  evaluation, options):
         "MPLExportGraphics[filename_String, expr_, format___String,  OptionsPattern[MPLExportGraphics]]"
-        wl2mpl = WL2MLP(expr, evaluation, drawsymbols=True)
+        wl2mpl = _WL2MLP(expr, evaluation, drawsymbols=True)
         context = wl2mpl.context
         try:
             if type(format) is String:
@@ -340,11 +357,15 @@ class MPLExportGraphicsToString(Builtin):
     }
     options = GRAPHICS_OPTIONS
 
+    rules = {"System`GraphicsToSVG[expr_]"  : 'System`MPLExportGraphicsToString[expr, "svg"]',
+             "System`GraphicsToTeX[expr_]"  : 'System`MPLExportGraphicsToString[expr, "pgf"]',
+    }
+
     def apply(self, expr, format,  evaluation, options):
         "MPLExportGraphicsToString[expr_, format___String,  OptionsPattern[MPLExportGraphicsToString]]"
         from io import StringIO, BytesIO
         out =  BytesIO()
-        wl2mpl = WL2MLP(expr, evaluation, drawsymbols=True)
+        wl2mpl = _WL2MLP(expr, evaluation, drawsymbols=True)
         context = wl2mpl.context
         try:
             if type(format) is String:
@@ -382,20 +403,18 @@ class MPLShow(Builtin):
     # This is copied Graphics in graphics.py
     # DRY the two
     options = GRAPHICS_OPTIONS
-    rules = {
-        
-    }
-    def apply_box(self, content, evaluation):
-        """System`MakeBoxes[System`content_System`Graphics, System`StandardForm]"""
-#        """System`MakeBoxes[System`content_System`Graphics, System`StandardForm|System`TraditionalForm|System`OutputForm]"""
-        self.apply(content, evaluation, [])
-        return String("--Graphics--")
+
+#    def apply_box(self, content, evaluation):
+#        """System`MakeBoxes[System`content_System`Graphics, System`StandardForm]"""
+##        """System`MakeBoxes[System`content_System`Graphics, System`StandardForm|System`TraditionalForm|System`OutputForm]"""
+ #       self.apply(content, evaluation, [])
+#        return String("--Graphics--")
 
 
     def apply(self, expr, evaluation, options):
         "%(name)s[expr_, OptionsPattern[%(name)s]]"
         # Process the options
-        wl2mpl = WL2MLP(expr, evaluation)
+        wl2mpl = _WL2MLP(expr, evaluation)
         context = wl2mpl.context
         for opt in options:
             context["options"][opt] = options[opt]
