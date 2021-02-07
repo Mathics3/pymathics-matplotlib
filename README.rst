@@ -1,16 +1,17 @@
-PyMathics module to use matplotlib as a rendering endgine for Graphics.
+pymathics-matplotlib
+====================
 
-To install in development mode (run code from the source tree):
+A PyMathics module to use matplotlib as a rendering engine
+for Graphics in Mathics.
 
-::
+To install in development mode, run from the source tree::
 
-   $ make develop
+    $ make develop
 
-
-After installing inside Mathics you can load this using the
+Once installed, you can load this inside Mathics using the
 ``LoadModule[]`` function.
 
-Then to the function ``ToMatplotlib[]`` and ``MPlot[]`` will be available.
+This makes the functions ``ToMatplotlib[]`` and ``MPlot[]`` available.
 
 ::
 
