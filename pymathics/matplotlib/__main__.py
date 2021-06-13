@@ -6,8 +6,28 @@ from mathics.core.rules import Rule
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 from matplotlib.collections import PatchCollection
-from mathics.builtin.colors import hsb_to_rgb
+from mathics.builtin.drawing.colors import hsb_to_rgb
 from mathics.builtin.graphics import _Color, GRAPHICS_OPTIONS
+
+import base64
+
+
+class MPLGraphicsExport(Builtin):
+    context = "System`Convert`Graphics"
+    options = {"Format": "Automatic",}
+    
+    def apply_exportfn(self, filename, graphexpr, evaluation, options):
+        'MPLGraphicsExport[filename_System`String, graphexpr_System`Graphics, System`OptionsPattern[]]'
+        filename = filename.value
+        elems = graphexpr.leaves()
+        wl2mpl = _WL2MPL(elems, evaluation)
+        try:
+            wl2mpl.export(self, filename, evaluation)
+        except:
+            return Symbol("Failed")
+            pass    
+        return String(f"- {filename} -")
+
 
 
 
@@ -20,7 +40,7 @@ class MPLGraphicsBox(BoxConstruct):
         """System`MakeBoxes[System`Graphics[elems_, System`OptionsPattern[System`Graphics]],
         System`StandardForm|System`TraditionalForm|System`OutputForm]"""
         instance = MPLGraphicsBox(elems)
-        instance.wl2mpl = _WL2MLP(elems, evaluation)
+        instance.wl2mpl = _WL2MPL(elems, evaluation)
         return instance
 
     def boxes_to_text(self, leaves=None, **options):
@@ -33,19 +53,31 @@ class MPLGraphicsBox(BoxConstruct):
         self.wl2mpl.export(out, options["evaluation"],format="pgf") 
         return out.getvalue()
 
-    def boxes_to_xml(self, leaves=None, **options):
+    def boxes_to_mathml(self, leaves=None, **options):
         if not leaves:
             leaves = self._leaves
-        return self.boxes_to_svg(options["evaluation"])
+        svg_body = self.boxes_to_svg(options["evaluation"])
+        template = (
+            '<img width="%d" height="%d" src="data:image/svg+xml;base64,%s"/>'
+            #'<mglyph  src="data:image/svg+xml;base64,%s"/>'
+        )
+        return template % (
+            int(self.width),
+            int(self.height),
+            base64.b64encode(svg_body.encode("utf8")).decode("utf8"),
+        )
+
 
     def boxes_to_svg(self, evaluation):
         from io import StringIO
         out =  StringIO()
-        self.wl2mpl.export(out, evaluation,format="svg") 
+        self.wl2mpl.export(out, evaluation,format="svg")
+        self.width, self.height = self.wl2mpl.context["fig"].get_size_inches()
+        self.width, self.height = (self.width*96, self.height*96)
         return out.getvalue()
 
 
-class _WL2MLP:
+class _WL2MPL:
     def __init__(self, expr, evaluation, drawsymbols=True):
         fig, ax = plt.subplots()
         self.context = {"fig": fig,
@@ -319,7 +351,7 @@ class MPLExportGraphics(Builtin):
     
     def apply(self, filename, expr, format,  evaluation, options):
         "MPLExportGraphics[filename_String, expr_, format___String,  OptionsPattern[MPLExportGraphics]]"
-        wl2mpl = _WL2MLP(expr, evaluation, drawsymbols=True)
+        wl2mpl = _WL2MPL(expr, evaluation, drawsymbols=True)
         context = wl2mpl.context
         try:
             if type(format) is String:
@@ -365,7 +397,7 @@ class MPLExportGraphicsToString(Builtin):
         "MPLExportGraphicsToString[expr_, format___String,  OptionsPattern[MPLExportGraphicsToString]]"
         from io import StringIO, BytesIO
         out =  BytesIO()
-        wl2mpl = _WL2MLP(expr, evaluation, drawsymbols=True)
+        wl2mpl = _WL2MPL(expr, evaluation, drawsymbols=True)
         context = wl2mpl.context
         try:
             if type(format) is String:
@@ -414,7 +446,7 @@ class MPLShow(Builtin):
     def apply(self, expr, evaluation, options):
         "%(name)s[expr_, OptionsPattern[%(name)s]]"
         # Process the options
-        wl2mpl = _WL2MLP(expr, evaluation)
+        wl2mpl = _WL2MPL(expr, evaluation)
         context = wl2mpl.context
         for opt in options:
             context["options"][opt] = options[opt]
