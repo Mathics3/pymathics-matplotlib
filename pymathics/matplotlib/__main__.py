@@ -13,6 +13,7 @@ class ToMatplotlib(Builtin):
       <dt>'ToMatplotlib'[$expr$]
       <dd>Convert $expr$ to matplotlib.
     </dl>
+
     >> PyMathics`ToMatplotlib[Line[{{0.25,0.5},{0.25,0.25},{0.5,0.25},{0.5,0.5}}]]
     """
 
@@ -127,6 +128,7 @@ class MPlot(Builtin):
       <dt>'MPLot'[$expr$]
       <dd>Convert $expr$ in matplotlib.
     </dl>
+
     >> PyMathics`ToMatplotlib[Line[{{0.25,0.5},{0.25,0.25},{0.5,0.25},{0.5,0.5}}]]
     """
 
